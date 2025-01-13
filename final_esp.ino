@@ -9,13 +9,16 @@
 #include "addons/RTDBHelper.h"
 
 // Wi-Fi credentials
-#define WIFI_SSID "alaa"
-#define WIFI_PASSWORD "00000000"
+#define WIFI_SSID "Alaa"
+#define WIFI_PASSWORD "123456789#"
 
 // Firebase credentials
 #define API_KEY "AIzaSyDpHIIc7N5NRP6AGs88fxNI-6weSYKTpx4"
 #define DATABASE_URL "https://nyera-603f0-default-rtdb.firebaseio.com/"
 #define FIREBASE_PROJECT_ID "nyera-603f0"
+
+
+
 
 // Firebase instances
 FirebaseData fbdoTemp;
@@ -40,10 +43,11 @@ float turbidityVoltage;
 float turbidityNTU;
 
 // TDS Sensor Configuration
-
+#define TDS_THRSHOLD 800
+#define TDS_LED 32
 #define TdsSensorPin 35
 #define VREF 3.3              // analog reference voltage(Volt) of the ADC
-#define SCOUNT  30            // sum of sample point
+#define SCOUNT  10            // sum of sample point
 
 int analogBuffer[SCOUNT];     // store the analog value in the array, read from ADC
 int analogBufferTemp[SCOUNT];
@@ -78,7 +82,6 @@ int getMedianNum(int bArray[], int iFilterLen) {
   return bTemp;
 }
 
-
 void uploadDocument(float temperatureC, float turbidityNTU, float TDS) {
   // Create a unique ID for the document
   String documentId = String(millis()); // Use the current time in milliseconds as the document ID
@@ -102,7 +105,7 @@ void setup() {
   Serial.begin(115200);
   pinMode(TdsSensorPin, INPUT);
   pinMode(turbiditySensorPin, INPUT);
-
+  pinMode(TDS_LED , OUTPUT);
   // Initialize sensors
   sensors.begin();
 
@@ -153,11 +156,11 @@ void loop() {
 
   // Turbidity Measurement
   turbidityVoltage = (float)analogRead(turbiditySensorPin) * (3.3 / 4095);
-  turbidityNTU = -1000.4 * (turbidityVoltage * turbidityVoltage) + 5742.3 * turbidityVoltage - 4352.9;
+  turbidityNTU = -588.24 * turbidityVoltage + 2470.61;
 
   // TDS Measurement
   static unsigned long analogSampleTimepoint = millis();
-  if (millis() - analogSampleTimepoint > 40U) { // Every 40 ms
+  if (millis() - analogSampleTimepoint > 200U) { // Every 40 ms
     analogSampleTimepoint = millis();
     analogBuffer[analogBufferIndex] = analogRead(TdsSensorPin);
     analogBufferIndex++;
@@ -167,7 +170,7 @@ void loop() {
   }
 
   static unsigned long printTimepoint = millis();
-  if (millis() - printTimepoint > 800U) {
+  if (millis() - printTimepoint > 4000U) {
     printTimepoint = millis();
     for (copyIndex = 0; copyIndex < SCOUNT; copyIndex++) {
       analogBufferTemp[copyIndex] = analogBuffer[copyIndex];
@@ -185,13 +188,23 @@ void loop() {
 
       //Serial.print("voltage:");
       Serial.println(tdsValue, 0);
-      Serial.println(",");
-      Serial.println(averageVoltage, 2);
+      Serial.println(temperatureC, 0);
+      Serial.println(turbidityNTU, 0);
+      //Serial.println(",");
+      //Serial.println(averageVoltage, 2);
+      if(tdsValue > TDS_THRSHOLD)
+      {
+        digitalWrite(TDS_LED,HIGH);
+      }
+      else
+      {
+        digitalWrite(TDS_LED,LOW);
+      }
       //Serial.print("V   ");
       //      Serial.print("TDS Value:");
       //      Serial.println("ppm");
 
-      if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 1000 || sendDataPrevMillis == 0)) {
+      if (Firebase.ready() && signupOK && (millis() - sendDataPrevMillis > 4000 || sendDataPrevMillis == 0)) {
         sendDataPrevMillis = millis();
         if (Firebase.RTDB.setInt(&fbdoTDS, "sensors/tds", tdsValue)) {
           Serial.println ("sent");
@@ -218,7 +231,7 @@ void loop() {
         } else {
           Serial.println("Turbidity upload failed: " + fbdoTurb.errorReason());
         }
-
+        uploadDocument(temperatureC, turbidityNTU, tdsValue);
       }
     }
   }
